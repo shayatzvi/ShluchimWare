@@ -1,0 +1,92 @@
+body {
+    font-family: sans-serif;
+    background-color: #f8f9fa; /* Lighter background consistent with Bootstrap */
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #343a40; /* Darker grey for headings */
+}
+
+/* Ensure cards have consistent padding if needed */
+.card-body {
+    padding: 1.25rem;
+}
+.card-footer {
+    background-color: rgba(0,0,0,.03); /* Standard Bootstrap card footer bg */
+}
+
+/* List Group Adjustments */
+.list-group-item {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+.table { /* Ensure tables don't have excessive bottom margin */
+    margin-bottom: 0;
+}
+/* Align text in table cells vertically */
+.table td, .table th {
+    vertical-align: middle;
+}
+
+.list-group-item .badge,
+.table .badge { /* Spacing for badges in lists/tables */
+    margin-left: 10px;
+    vertical-align: middle; /* Align badges better */
+}
+.list-group-item .btn-sm,
+.table .btn-sm { /* Ensure buttons in lists/tables are small */
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+}
+
+/* Navbar Styles */
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,.1); /* Subtle shadow for navbar */
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.navbar .nav-link {
+    color: rgba(255, 255, 255, 0.75); /* Slightly dimmer nav links */
+}
+.navbar .nav-link:hover,
+.navbar .nav-link.active {
+    color: #fff;
+}
+
+.navbar .navbar-text {
+     color: rgba(255, 255, 255, 0.7);
+     font-size: 0.9em;
+}
+
+/* Error Message Style */
+.error-message { /* Used on login page */
+    color: var(--bs-danger); /* Use Bootstrap danger color */
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+/* Style for status badges */
+.status-pending { background-color: var(--bs-warning); color: #000 !important; } /* Warning */
+.status-paid { background-color: var(--bs-success); } /* Success */
+.status-approved { background-color: var(--bs-info); color: #000 !important; } /* Info */
+.status-cancelled { background-color: var(--bs-secondary); } /* Secondary */
+.status-rejected { background-color: var(--bs-danger); } /* Danger */
+
+/* Ensure icons align nicely with text in buttons */
+.btn i.bi {
+    margin-right: 0.3em;
+    vertical-align: text-bottom; /* Adjust alignment */
+}
+
+/* Login page specific centering */
+.vh-100 {
+    min-height: 100vh;
+}
+
+/* Ensure table actions don't wrap unnecessarily */
+.table td:last-child {
+    white-space: nowrap;
+}

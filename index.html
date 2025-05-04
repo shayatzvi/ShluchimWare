@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shluchim Money Management</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Shluchim Money Management</h1>
+
+    <!-- Authentication Section -->
+    <div id="auth-container">
+        <h2>Login / Sign Up</h2>
+        <input type="email" id="email" placeholder="Email" required><br>
+        <input type="password" id="password" placeholder="Password" required><br>
+        <button id="login-btn">Login</button>
+        <button id="signup-btn">Sign Up</button>
+        <button id="logout-btn" style="display: none;">Logout</button>
+        <p id="auth-status">Not logged in.</p>
+        <p id="user-role" style="display: none;"></p>
+    </div>
+
+    <!-- Main Content Area (shown after login) -->
+    <div id="main-content" style="display: none;">
+
+        <!-- Admin Only Section -->
+        <div id="admin-section" style="display: none;">
+            <h2>Admin Area</h2>
+            <!-- Account Management -->
+            <section>
+                <h3>Manage Accounts</h3>
+                <input type="text" id="account-name" placeholder="Account Name">
+                <input type="text" id="account-type" placeholder="Type (e.g., Bank)">
+                <input type="text" id="account-owner" placeholder="Owner">
+                <textarea id="account-notes" placeholder="Notes"></textarea>
+                <button id="add-account-btn">Add Account</button>
+                <div id="accounts-list"></div>
+            </section>
+             <!-- Expense Type Management -->
+            <section>
+                <h3>Manage Expense Types</h3>
+                <input type="text" id="exp-type-name" placeholder="Expense Type Name">
+                <button id="add-exp-type-btn">Add Type</button>
+                <div id="exp-types-list"></div>
+                <!-- Subtype management would go here -->
+            </section>
+            <!-- Request Approval -->
+             <section>
+                <h3>Approve Expense Requests</h3>
+                <div id="requests-list-admin"></div>
+            </section>
+        </div>
+
+        <!-- General User Section -->
+        <div id="general-section">
+            <h2>Dashboard</h2>
+             <!-- Log Income -->
+            <section>
+                <h3>Log Income</h3>
+                <input type="text" id="income-desc" placeholder="Description">
+                <input type="number" id="income-amount" placeholder="Amount">
+                <input type="text" id="income-source" placeholder="Source (Donation, Grant)">
+                <select id="income-account-select"></select> <!-- Populate with accounts -->
+                 <input type="date" id="income-date">
+                <button id="add-income-btn">Log Income (as Pending)</button>
+                <div id="income-list"></div> <!-- Display recent income -->
+            </section>
+
+            <!-- Log Expense -->
+            <section>
+                <h3>Log Expense</h3>
+                 <input type="text" id="expense-desc" placeholder="Description">
+                <input type="number" id="expense-amount" placeholder="Amount">
+                <select id="expense-account-select"></select> <!-- Populate with accounts -->
+                <select id="expense-type-select"></select> <!-- Populate with types -->
+                <!-- Add subtype select if needed -->
+                 <input type="date" id="expense-date">
+                <button id="add-expense-btn">Log Expense (as Pending)</button>
+                <div id="expense-list"></div> <!-- Display recent expenses -->
+            </section>
+
+             <!-- Request Expense (for 'basic' users) -->
+            <section id="request-section" style="display: none;">
+                <h3>Request Funds</h3>
+                <input type="text" id="request-desc" placeholder="Expense Description">
+                <input type="number" id="request-amount" placeholder="Amount Needed">
+                <textarea id="request-reason" placeholder="Reason for request"></textarea>
+                <button id="submit-request-btn">Submit Request</button>
+                <div id="my-requests-list"></div> <!-- Display user's requests -->
+            </section>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+    <!-- Your App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
