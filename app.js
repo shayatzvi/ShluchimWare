@@ -441,8 +441,14 @@ function attachAuthListeners() {
                     console.log("Signup successful for user:", userCredential.user.email);
                     // --- MODIFIED: Create initial entry in 'roles' with 'no_access' role ---
                     const uid = userCredential.user.uid;
-                    await db.collection('roles').doc(uid).set({ email: email, role: 'no_access' }, { merge: true });
-                    console.log(`Created initial roles document for ${email}`);
+                    console.log(`Attempting to create roles document for UID: ${uid}, Email: ${email}`); // Log before write
+                    try {
+                        await db.collection('roles').doc(uid).set({ email: email, role: 'no_access' }, { merge: true });
+                        console.log(`SUCCESS: Created initial roles document for ${email} (UID: ${uid})`); // Log success
+                    } catch (firestoreError) {
+                        console.error(`FAILURE: Error creating initial roles document for ${email} (UID: ${uid}):`, firestoreError); // Log failure
+                        showToast("Signup Error", `Account created, but failed to set initial role: ${firestoreError.message}`, "danger"); // Show error to user
+                    }
                     // Auth listener will handle redirect.
                 })
                 .catch(error => {

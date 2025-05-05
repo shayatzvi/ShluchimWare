@@ -53,15 +53,19 @@ function waitForUserAndRole(timeout = 5000) {
 }
 
 function initializeAssignRolesPage() {
+    // Detach previous listeners if any? No, loadUsers should handle updates.
     attachRoleAssignmentListeners();
-    loadUsersForRoleAssignment();
+    // loadUsersForRoleAssignment(); // Replace one-time load with listener
+    listenForUserRoleChanges(); // Start the realtime listener
 }
 
 function attachRoleAssignmentListeners() {
     const tableBody = document.getElementById('users-role-table-body');
     if (tableBody && !tableBody.dataset.listenerAttached) {
         tableBody.addEventListener('click', handleRoleChangeAction);
+        // Add listener for clicks within the table body
         tableBody.dataset.listenerAttached = 'true';
+        console.log("Assign Roles: Click listener attached to table body.");
     }
 }
 
@@ -71,20 +75,27 @@ async function loadUsersForRoleAssignment() {
     tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Loading users...</td></tr>';
 
     try {
+        // --- Use get() for one-time load ---
+        // console.log("Assign Roles: Fetching users from 'roles' collection..."); // Log fetch start
         const snapshot = await db.collection('roles').orderBy('email').get();
+        // --- End one-time load ---
 
         if (snapshot.empty) {
+            console.log("Assign Roles: No users found in initial load.");
             tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No users found in roles collection. Users must sign up first.</td></tr>';
             return;
         }
 
         let html = '';
+        console.log(`Assign Roles: Found ${snapshot.size} documents.`); // Log count
         snapshot.forEach(doc => {
             const userData = doc.data();
             const userId = doc.id;
-            // --- MODIFIED: Handle missing/invalid roles ---
-            const isValidRole = userData.role && ['admin', 'basic'].includes(userData.role);
-            const currentRole = isValidRole ? userData.role : null; // Use null if role is missing or invalid
+            // --- MODIFIED: Include 'no_access' and handle missing/invalid roles ---
+            console.log(`Assign Roles: Processing User ID: ${userId}, Data:`, JSON.stringify(userData)); // Log each user's data
+            const validRoles = ['admin', 'basic', 'no_access'];
+            const isValidRole = userData.role && validRoles.includes(userData.role);
+            const currentRole = isValidRole ? userData.role : 'no_access'; // Default to 'no_access' if missing/invalid
             const displayRole = currentRole || 'Not Assigned'; // Text to display
 
             // Prevent admin from changing their own role via this interface
@@ -95,7 +106,12 @@ async function loadUsersForRoleAssignment() {
             html += `
              <tr>
                  <td>${escapeHTML(userData.email || 'Email Missing!')}</td>
-                 <td><span class="badge ${currentRole === 'admin' ? 'bg-primary' : (currentRole === 'basic' ? 'bg-secondary' : 'bg-warning text-dark')} text-capitalize">${escapeHTML(displayRole)}</span></td>
+                 <td>
+                    <span class="badge ${
+                        currentRole === 'admin' ? 'bg-primary' :
+                        (currentRole === 'basic' ? 'bg-secondary' : 'bg-light text-dark border') // Style for 'no_access'
+                    } text-capitalize">${escapeHTML(displayRole)}</span>
+                 </td>
                  <td>
                      <div class="btn-group btn-group-sm" role="group" ${titleAttr}>
                          <button class="btn btn-outline-secondary ${currentRole === 'basic' ? 'active' : ''}" data-current-role="${currentRole || ''}"
@@ -117,6 +133,72 @@ async function loadUsersForRoleAssignment() {
         tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading users.</td></tr>';
         showToast("Error", "Could not load users.", "danger");
     }
+}
+
+// --- New Function: Listen for Realtime Updates ---
+let rolesListenerUnsubscribe = null; // To store the unsubscribe function
+
+function listenForUserRoleChanges() {
+    const tableBody = document.getElementById('users-role-table-body');
+    if (!tableBody) return;
+
+    console.log("Assign Roles: Setting up realtime listener for 'roles' collection...");
+    tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Listening for user updates...</td></tr>';
+
+    // Unsubscribe from previous listener if it exists
+    if (rolesListenerUnsubscribe) {
+        console.log("Assign Roles: Unsubscribing from previous listener.");
+        rolesListenerUnsubscribe();
+        rolesListenerUnsubscribe = null;
+    }
+
+    rolesListenerUnsubscribe = db.collection('roles')
+        .orderBy('email')
+        .onSnapshot(snapshot => {
+            console.log(`Assign Roles: Snapshot received. ${snapshot.docChanges().length} changes. Total docs: ${snapshot.size}`);
+            if (snapshot.empty) {
+                tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No users found in roles collection. Users must sign up first.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            snapshot.forEach(doc => {
+                const userData = doc.data();
+                const userId = doc.id;
+                // Use same logic as loadUsersForRoleAssignment
+                const validRoles = ['admin', 'basic', 'no_access'];
+                const isValidRole = userData.role && validRoles.includes(userData.role);
+                const currentRole = isValidRole ? userData.role : 'no_access';
+                const displayRole = currentRole || 'Not Assigned';
+
+                const disableActions = userId === currentUser?.uid; // Check currentUser exists
+                const disabledAttr = disableActions ? 'disabled' : '';
+                const titleAttr = disableActions ? 'title="Cannot change your own role"' : '';
+
+                html += `
+                 <tr>
+                     <td>${escapeHTML(userData.email || 'Email Missing!')}</td>
+                     <td>
+                        <span class="badge ${
+                            currentRole === 'admin' ? 'bg-primary' :
+                            (currentRole === 'basic' ? 'bg-secondary' : 'bg-light text-dark border')
+                        } text-capitalize">${escapeHTML(displayRole)}</span>
+                     </td>
+                     <td>
+                         <div class="btn-group btn-group-sm" role="group" ${titleAttr}>
+                             <button class="btn btn-outline-secondary ${currentRole === 'basic' ? 'active' : ''}" data-current-role="${currentRole || ''}" data-id="${userId}" data-action="set-role-basic" ${disabledAttr}>Set Basic</button>
+                             <button class="btn btn-outline-primary ${currentRole === 'admin' ? 'active' : ''}" data-current-role="${currentRole || ''}" data-id="${userId}" data-action="set-role-admin" ${disabledAttr}>Set Admin</button>
+                         </div>
+                     </td>
+                 </tr>`;
+            });
+            tableBody.innerHTML = html;
+
+        }, error => {
+            console.error("Error listening to roles collection:", error);
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error listening for user updates.</td></tr>';
+            showToast("Error", "Could not listen for user updates.", "danger");
+        });
 }
 
 async function handleRoleChangeAction(event) {
@@ -159,7 +241,8 @@ async function handleRoleChangeAction(event) {
 
         await db.collection('roles').doc(userId).set({ role: newRole, email: button.closest('tr').cells[0].textContent }, { merge: true }); // Merge to update/add role and ensure email is present
         showToast("Success", `User role updated to ${newRole}.`, "success");
-        loadUsersForRoleAssignment(); // Refresh the table
+        // No need to manually refresh, the onSnapshot listener will handle it automatically.
+        // loadUsersForRoleAssignment();
     } catch (error) {
         console.error(`Error updating role for user ${userId}:`, error);
         showToast("Error", `Failed to update user role: ${error.message}`, "danger");
