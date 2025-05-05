@@ -347,7 +347,7 @@ function attachAuthListeners() {
     if (document.body.dataset.authListenersAttached === 'true') return;
 
     const loginBtn = document.getElementById('login-btn');
-    // const signupBtn = document.getElementById('signup-btn'); // Removed signup button reference
+    const signupBtn = document.getElementById('signup-btn');
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const authError = document.getElementById('auth-error');
@@ -358,7 +358,7 @@ function attachAuthListeners() {
             const password = passwordInput.value;
             authError.style.display = 'none'; // Hide previous errors
             loginBtn.disabled = true; // Prevent double clicks
-            // if (signupBtn) signupBtn.disabled = true; // Disable signup if it existed
+            signupBtn.disabled = true;
 
             auth.signInWithEmailAndPassword(email, password)
                 .then(() => {
@@ -371,54 +371,52 @@ function attachAuthListeners() {
                     authError.style.display = 'block';
                 })
                 .finally(() => {
-                    loginBtn.disabled = false; // Re-enable login button
-                    // if (signupBtn) signupBtn.disabled = false; // Re-enable signup if it existed
+                    loginBtn.disabled = false;
+                    signupBtn.disabled = false;
                 });
         });
     }
 
-    // Removed signup button listener
-    // if (signupBtn) {
-    //      signupBtn.addEventListener('click', () => {
-    //         const email = emailInput.value;
-    //         const password = passwordInput.value;
-    //          authError.style.display = 'none'; // Hide previous errors
-    //          loginBtn.disabled = true;
-    //          signupBtn.disabled = true;
-    //
-    //         auth.createUserWithEmailAndPassword(email, password)
-    //             .then(async (userCredential) => {
-    //                 console.log("Signup successful, assigning role...");
-    //                 const uid = userCredential.user.uid;
-    //                 try {
-    //                     // Assign default 'basic' role
-    //                     await db.collection('roles').doc(uid).set({
-    //                         email: email,
-    //                         role: 'basic'
-    //                     }, { merge: true }); // Use merge just in case
-    //                     console.log("Default 'basic' role assigned.");
-    //                     // Auth listener will handle the redirect after role is set
-    //                     // No explicit redirect needed here.
-    //                 } catch (roleError) {
-    //                     console.error("Error setting default role:", roleError);
-    //                     authError.textContent = "Signup successful, but failed to set default role.";
-    //                      authError.style.display = 'block';
-    //                 }
-    //             })
-    //             .catch(error => {
-    //                 console.error("Sign Up Failed:", error);
-    //                  authError.textContent = `Sign Up Failed: ${error.message}`;
-    //                  authError.style.display = 'block';
-    //             })
-    //             .finally(() => {
-    //                 loginBtn.disabled = false;
-    //                 signupBtn.disabled = false;
-    //             });
-    //     });
-    // }
+    if (signupBtn) {
+         signupBtn.addEventListener('click', () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+             authError.style.display = 'none'; // Hide previous errors
+             loginBtn.disabled = true;
+             signupBtn.disabled = true;
+
+            auth.createUserWithEmailAndPassword(email, password)
+                .then(async (userCredential) => {
+                    console.log("Signup successful, assigning role...");
+                    const uid = userCredential.user.uid;
+                    try {
+                        // Assign default 'basic' role
+                        await db.collection('roles').doc(uid).set({
+                            email: email,
+                            role: 'basic'
+                        }, { merge: true }); // Use merge just in case
+                        console.log("Default 'basic' role assigned.");
+                        // Auth listener will handle the redirect after role is set
+                        // No explicit redirect needed here.
+                    } catch (roleError) {
+                        console.error("Error setting default role:", roleError);
+                        authError.textContent = "Signup successful, but failed to set default role.";
+                         authError.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error("Sign Up Failed:", error);
+                     authError.textContent = `Sign Up Failed: ${error.message}`;
+                     authError.style.display = 'block';
+                })
+                .finally(() => {
+                    loginBtn.disabled = false;
+                    signupBtn.disabled = false;
+                });
+        });
+    }
     document.body.dataset.authListenersAttached = 'true'; // Mark as attached
 }
-
 
 function attachDashboardListeners() {
     if (document.body.dataset.dashboardListenersAttached === 'true') return;
@@ -474,6 +472,7 @@ function attachDashboardListeners() {
 
     // Add listeners for status updates within the lists (delegated)
     document.getElementById('income-list')?.addEventListener('click', handleStatusUpdate);
+    // Note: Status updates might be moved primarily to the dedicated income/expense pages later
     document.getElementById('expense-list')?.addEventListener('click', handleStatusUpdate);
 
     document.body.dataset.dashboardListenersAttached = 'true';
@@ -1467,7 +1466,7 @@ async function handleRequestAction(event) {
         }
     } catch (error) {
         console.error(`Error processing request action (${action}):`, error);
-        showToast("Error", `Failed to ${action} request. Details: ${error.message}`, "danger");
+        showToast("Error", `Failed to ${action} request.`, "danger");
         // Re-enable buttons on error
         button.disabled = false;
         if (siblingButton) siblingButton.disabled = false;
@@ -1541,6 +1540,12 @@ async function finalizeRequestApproval(requestId, description, amount, accountId
     }
 }
 
+// Placeholder function for viewing linked expense (could open a modal)
+// function viewExpense(expenseId) {
+//     // TODO: Implement logic to fetch and display expense details, maybe in a modal.
+//     console.log("Attempting to view expense:", expenseId);
+//     showToast("Not Implemented", `Viewing expense ${expenseId} is not yet implemented.`, "info");
+// }
 
 // --- Admin Table Action Handler ---
 function handleAdminTableActions(event) {
