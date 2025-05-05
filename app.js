@@ -27,7 +27,7 @@ let appToastInstance = null; // For notifications
 
 // --- Global State ---
 let currentUser = null;
-let userRole = null; // 'admin', 'basic', or null
+let userRole = undefined; // Start as undefined until fetched/assumed
 let accountsCache = []; // Cache accounts for dropdowns/lookups
 let expenseTypesCache = []; // Cache expense types
 
@@ -150,7 +150,7 @@ auth.onAuthStateChanged(async (user) => {
         }
     } else {
         currentUser = null;
-        userRole = null;
+        userRole = undefined; // Reset role on logout
         console.log("User logged out or not logged in.");
         if (logoutBtn) logoutBtn.style.display = 'none'; // Hide logout button
 
@@ -174,26 +174,36 @@ async function fetchUserRole(uid) {
         const roleDoc = await db.collection('roles').doc(uid).get();
         if (roleDoc.exists) {
             userRole = roleDoc.data().role;
-            console.log(`User role fetched: ${userRole}`);
+            // --- MODIFIED: Include 'no_access' as a valid, but permissionless, role ---
+            if (!userRole || !['admin', 'basic', 'no_access'].includes(userRole)) {
+                console.warn(`Invalid role found for user ${uid}: ${userRole}. Treating as no role.`);
+                userRole = null; // Treat invalid role as no role
+                // Optional: Auto-fix invalid roles to 'no_access' or 'basic'? For now, just treat as null.
+                // try {
+                //     await db.collection('roles').doc(uid).set({ role: 'basic' }, { merge: true });
+                //     console.log("Corrected invalid role to 'basic' in Firestore.");
+                // } catch (fixError) {
+                //     console.error("Error correcting invalid role document:", fixError);
+                // }
+            } else {
+                console.log(`User role fetched: ${userRole}`);
+            }
         } else {
-            console.log("No role document found for user, assigning 'basic'.");
-            userRole = 'basic'; // Assign default role
-            // Create the role document for the user
-            await db.collection('roles').doc(uid).set({
-                email: currentUser.email, // Assuming currentUser is available
-                role: 'basic'
-            }, { merge: true }); // Use merge to avoid overwriting if created concurrently
-            console.log("Created default 'basic' role document for user.");
+            // If no role document exists, the user has no assigned role.
+            console.log(`No role document found for user ${uid}. Treating as no access.`);
+            userRole = null; // Set role to null
         }
     } catch (error) {
         console.error("Error fetching or setting user role:", error);
-        userRole = null; // Handle error case
+        userRole = null; // Fallback to null on error
         showToast("Role Error", "Could not determine user role.", "danger");
     }
     // Update role display if element exists
      if (userRoleDisplay) {
-        userRoleDisplay.textContent = userRole ? `Role: ${userRole}` : 'Role: Error';
-        userRoleDisplay.className = userRole ? `badge bg-info text-dark fs-6 text-capitalize` : `badge bg-danger fs-6`; // Use Bootstrap badge classes
+        // --- MODIFIED: Display 'No Access' for null or 'no_access' role ---
+        const displayRoleText = (userRole === 'admin' || userRole === 'basic') ? userRole : 'No Access';
+        userRoleDisplay.textContent = `Role: ${displayRoleText}`;
+        userRoleDisplay.className = `badge ${userRole === 'admin' || userRole === 'basic' ? 'bg-info text-dark' : 'bg-danger'} fs-6 text-capitalize`; // Use danger badge if no assigned role
      }
 }
 
@@ -203,6 +213,7 @@ function initializeCommonUI(user) {
     const logoutBtn = document.getElementById('logout-btn');
     const navAdmin = document.getElementById('nav-admin');
     const navRequests = document.getElementById('nav-requests');
+    // const mainNavLinks = document.querySelectorAll('.navbar-nav .nav-item:not(#logout-nav-item)'); // Selector no longer needed here
 
     if (userInfoSpan) userInfoSpan.textContent = `Logged in as: ${escapeHTML(user.email)}`;
 
@@ -218,9 +229,17 @@ function initializeCommonUI(user) {
          logoutBtn.dataset.listenerAttached = 'true';
     }
 
-    // Show/hide nav links based on role
-    if (navAdmin) navAdmin.style.display = userRole === 'admin' ? 'block' : 'none';
-    if (navRequests) navRequests.style.display = userRole === 'basic' ? 'block' : 'none';
+    // Show/hide Admin and Requests links based on role. Logout visibility is handled by onAuthStateChanged.
+    // --- MODIFIED: Hide links for null OR 'no_access' role ---
+    if (userRole === null || userRole === 'no_access') {
+        if (navAdmin) navAdmin.style.display = 'none';
+        if (navRequests) navRequests.style.display = 'none';
+        console.log(`Hiding main navigation for user with role: ${userRole}`);
+    } else { // Only show for 'admin' or 'basic'
+        if (navAdmin) navAdmin.style.display = userRole === 'admin' ? 'block' : 'none';
+        if (navRequests) navRequests.style.display = userRole === 'basic' ? 'block' : 'none';
+    }
+
 
     // Highlight active nav link based on current page
     document.querySelectorAll('.navbar .nav-link').forEach(link => {
@@ -237,9 +256,11 @@ function initializeCommonUI(user) {
 
     // Update role display (already done in fetchUserRole, but can be reinforced here if needed)
     const userRoleDisplay = document.getElementById('user-role');
-     if (userRoleDisplay && userRole) {
-        userRoleDisplay.textContent = `Role: ${userRole}`;
-        userRoleDisplay.className = `badge bg-info text-dark fs-6 text-capitalize`;
+     if (userRoleDisplay) { // Update regardless of role value
+        // --- MODIFIED: Display 'No Access' for null or 'no_access' role ---
+        const displayRoleText = (userRole === 'admin' || userRole === 'basic') ? userRole : 'No Access';
+        userRoleDisplay.textContent = `Role: ${displayRoleText}`;
+        userRoleDisplay.className = `badge ${userRole === 'admin' || userRole === 'basic' ? 'bg-info text-dark' : 'bg-danger'} fs-6 text-capitalize`; // Use danger badge if no assigned role
      }
 
      // Initialize Toast component if not already done
@@ -251,17 +272,44 @@ function initializeCommonUI(user) {
 
 // --- Initialize Page-Specific Logic ---
 async function initializePageSpecificLogic() {
-    if (!currentUser || !userRole) {
+    if (!currentUser) { // Only check for user existence initially
         console.warn("Cannot initialize page logic without user or role.");
         // Redirect if role check fails unexpectedly after login attempt on non-login page
         if (!currentPage.includes('login.html')) {
-            console.log("User or role missing on protected page, redirecting to login.");
+            console.log("User missing on protected page, redirecting to login.");
             window.location.href = 'login.html';
         }
         return;
     }
 
-    console.log(`Initializing logic for page: ${currentPage} with role: ${userRole}`);
+    // --- MODIFIED: Block content for null OR 'no_access' role ---
+    // Handle case where user is logged in but has no effective permissions
+    if ((userRole === null || userRole === 'no_access') && !currentPage.includes('login.html')) {
+        console.log("User has no role. Blocking page content and displaying access message.");
+        const mainContent = document.getElementById('main-content');
+        if (mainContent) {
+            mainContent.innerHTML = `
+                <div class="alert alert-warning" role="alert">
+                    Please reach out to an administrator to gain access.
+                </div>`;
+        }
+        return; // Stop further page initialization
+    }
+
+    // If role is undefined, wait a moment and re-check (fetchUserRole might still be running)
+    if (userRole === undefined && !currentPage.includes('login.html')) {
+        console.warn("Role still undefined, waiting briefly...");
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms - adjust if needed
+        // --- MODIFIED: Re-check includes null and 'no_access' ---
+        if (userRole === undefined || userRole === null) { // Re-check after wait
+             console.error("Role could not be determined. Blocking page logic.");
+             // Optionally redirect or show a generic error
+             return;
+        }
+    }
+
+
+    console.log(`Initializing logic for page: ${currentPage} with role: ${userRole}`); // Log the determined role
 
     // Pre-load common data needed across pages (accounts, types)
     // These are needed for dropdowns and rendering names in tables
@@ -308,6 +356,7 @@ async function initializePageSpecificLogic() {
         loadAccountsTable(); // Changed to table
         loadExpenseTypesTable(); // Changed to table
         loadAdminRequests();
+        loadUsersTable(); // Load users table for role management
     }
     // --- Requests Page Logic ---
     else if (currentPage.includes('requests.html')) {
@@ -346,8 +395,8 @@ function attachAuthListeners() {
     // Ensure listeners are only attached once
     if (document.body.dataset.authListenersAttached === 'true') return;
 
-    const loginBtn = document.getElementById('login-btn');
-    const signupBtn = document.getElementById('signup-btn');
+    const loginBtn = document.getElementById('login-btn'); // Keep login button reference
+    const signupBtn = document.getElementById('signup-btn'); // Restore signup button reference
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const authError = document.getElementById('auth-error');
@@ -358,7 +407,7 @@ function attachAuthListeners() {
             const password = passwordInput.value;
             authError.style.display = 'none'; // Hide previous errors
             loginBtn.disabled = true; // Prevent double clicks
-            signupBtn.disabled = true;
+            if (signupBtn) signupBtn.disabled = true; // Disable signup too
 
             auth.signInWithEmailAndPassword(email, password)
                 .then(() => {
@@ -372,11 +421,12 @@ function attachAuthListeners() {
                 })
                 .finally(() => {
                     loginBtn.disabled = false;
-                    signupBtn.disabled = false;
+                    if (signupBtn) signupBtn.disabled = false;
                 });
         });
     }
 
+    // Restore signup button listener, but without role assignment
     if (signupBtn) {
          signupBtn.addEventListener('click', () => {
             const email = emailInput.value;
@@ -387,22 +437,13 @@ function attachAuthListeners() {
 
             auth.createUserWithEmailAndPassword(email, password)
                 .then(async (userCredential) => {
-                    console.log("Signup successful, assigning role...");
+                    // Signup successful, but DO NOT assign role here.
+                    console.log("Signup successful for user:", userCredential.user.email);
+                    // --- MODIFIED: Create initial entry in 'roles' with 'no_access' role ---
                     const uid = userCredential.user.uid;
-                    try {
-                        // Assign default 'basic' role
-                        await db.collection('roles').doc(uid).set({
-                            email: email,
-                            role: 'basic'
-                        }, { merge: true }); // Use merge just in case
-                        console.log("Default 'basic' role assigned.");
-                        // Auth listener will handle the redirect after role is set
-                        // No explicit redirect needed here.
-                    } catch (roleError) {
-                        console.error("Error setting default role:", roleError);
-                        authError.textContent = "Signup successful, but failed to set default role.";
-                         authError.style.display = 'block';
-                    }
+                    await db.collection('roles').doc(uid).set({ email: email, role: 'no_access' }, { merge: true });
+                    console.log(`Created initial roles document for ${email}`);
+                    // Auth listener will handle redirect.
                 })
                 .catch(error => {
                     console.error("Sign Up Failed:", error);
@@ -417,6 +458,7 @@ function attachAuthListeners() {
     }
     document.body.dataset.authListenersAttached = 'true'; // Mark as attached
 }
+
 
 function attachDashboardListeners() {
     if (document.body.dataset.dashboardListenersAttached === 'true') return;
@@ -472,7 +514,6 @@ function attachDashboardListeners() {
 
     // Add listeners for status updates within the lists (delegated)
     document.getElementById('income-list')?.addEventListener('click', handleStatusUpdate);
-    // Note: Status updates might be moved primarily to the dedicated income/expense pages later
     document.getElementById('expense-list')?.addEventListener('click', handleStatusUpdate);
 
     document.body.dataset.dashboardListenersAttached = 'true';
@@ -613,6 +654,9 @@ function attachAdminListeners() {
     // Added: Listeners for Edit/Delete buttons in tables (delegated)
     document.getElementById('accounts-table-body')?.addEventListener('click', handleAdminTableActions);
     document.getElementById('exp-types-table-body')?.addEventListener('click', handleAdminTableActions);
+    // Added: Listener for User Role Management table (delegated)
+    document.getElementById('users-table-body')?.addEventListener('click', handleAdminUserActions);
+
 
     document.body.dataset.adminListenersAttached = 'true';
 }
@@ -663,7 +707,9 @@ function attachExpensePageListeners() {
 // --- Data Caching ---
 async function loadAccountsCache() {
     try {
+        console.log(`Attempting to load accounts cache. User: ${currentUser?.uid}, Role: ${userRole}`); // Add log
         const snapshot = await db.collection('accounts').orderBy('name').get();
+        console.log("Firestore snapshot for accounts received, length:", snapshot.docs.length); // Add log
         accountsCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         console.log("Accounts cache loaded:", accountsCache.length);
     } catch (error) {
@@ -675,7 +721,9 @@ async function loadAccountsCache() {
 
 async function loadExpenseTypesCache() {
      try {
+        console.log(`Attempting to load expense types cache. User: ${currentUser?.uid}, Role: ${userRole}`); // Add log
         const snapshot = await db.collection('expenseTypes').orderBy('name').get();
+        console.log("Firestore snapshot for types received, length:", snapshot.docs.length); // Add log
         expenseTypesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         console.log("Expense types cache loaded:", expenseTypesCache.length);
     } catch (error) {
@@ -778,6 +826,7 @@ async function loadIncomeList() { // For Dashboard List
 // Added: Load full income table for income.html
 async function loadIncomeTable() {
     const tableBody = document.getElementById('income-table-body');
+    console.log("loadIncomeTable started. Account cache length:", accountsCache.length); // Add log
     if (!tableBody) return;
     tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Loading income records...</td></tr>';
 
@@ -787,6 +836,8 @@ async function loadIncomeTable() {
                                  .orderBy('receivedDate', 'desc')
                                  .limit(50) // Load more for the table view
                                  .get();
+
+        console.log(`loadIncomeTable: Firestore snapshot received, empty: ${snapshot.empty}, size: ${snapshot.size}`); // Log snapshot info
 
         if (snapshot.empty) {
             tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No income records found.</td></tr>';
@@ -798,6 +849,7 @@ async function loadIncomeTable() {
             const income = doc.data();
             const incomeId = doc.id;
             const accountName = accountsCache.find(acc => acc.id === income.accountId)?.name || 'Unknown Account';
+            console.log(`  Processing income ${incomeId}, Account lookup: ${accountName}`); // Log cache lookup result
 
             // Determine which buttons to show based on status and role
             let buttons = '';
@@ -826,11 +878,14 @@ async function loadIncomeTable() {
              </tr>`;
         });
         tableBody.innerHTML = rowsHtml;
+        console.log("loadIncomeTable finished processing snapshot."); // Log finish
 
     } catch (error) {
         console.error("Error loading income table:", error);
         tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading income records.</td></tr>';
         showToast("Error", "Could not load income table.", "danger");
+        // Ensure we log the error if it happens in the catch block
+        console.log("Error caught in loadIncomeTable:", error);
     }
 }
 
@@ -927,6 +982,7 @@ async function loadExpenseList() { // For Dashboard List
 // Added: Load full expense table for expenses.html
 async function loadExpenseTable() {
     const tableBody = document.getElementById('expense-table-body');
+    console.log("loadExpenseTable started. Account/Type cache lengths:", accountsCache.length, expenseTypesCache.length); // Log start
     if (!tableBody) return;
     tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Loading expense records...</td></tr>';
 
@@ -936,6 +992,8 @@ async function loadExpenseTable() {
                                  .orderBy('expenseDate', 'desc')
                                  .limit(50) // Load more for the table view
                                  .get();
+
+        console.log(`loadExpenseTable: Firestore snapshot received, empty: ${snapshot.empty}, size: ${snapshot.size}`); // Log snapshot info
 
         if (snapshot.empty) {
             tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No expense records found.</td></tr>';
@@ -948,6 +1006,7 @@ async function loadExpenseTable() {
             const expenseId = doc.id;
             const accountName = accountsCache.find(acc => acc.id === expense.accountId)?.name || 'Unknown Account';
             const typeName = expenseTypesCache.find(type => type.id === expense.expenseTypeId)?.name || 'Unknown Type';
+            console.log(`  Processing expense ${expenseId}, Account lookup: ${accountName}, Type lookup: ${typeName}`); // Log cache lookup results
 
             // Determine which buttons to show based on status and role
             let buttons = '';
@@ -976,11 +1035,14 @@ async function loadExpenseTable() {
              </tr>`;
         });
         tableBody.innerHTML = rowsHtml;
+        console.log("loadExpenseTable finished processing snapshot."); // Log finish
 
     } catch (error) {
         console.error("Error loading expense table:", error);
         tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading expense records.</td></tr>';
         showToast("Error", "Could not load expense table.", "danger");
+        // Ensure we log the error if it happens in the catch block
+        console.log("Error caught in loadExpenseTable:", error);
     }
 }
 
@@ -1466,7 +1528,7 @@ async function handleRequestAction(event) {
         }
     } catch (error) {
         console.error(`Error processing request action (${action}):`, error);
-        showToast("Error", `Failed to ${action} request.`, "danger");
+        showToast("Error", `Failed to ${action} request. Details: ${error.message}`, "danger");
         // Re-enable buttons on error
         button.disabled = false;
         if (siblingButton) siblingButton.disabled = false;
@@ -1540,12 +1602,6 @@ async function finalizeRequestApproval(requestId, description, amount, accountId
     }
 }
 
-// Placeholder function for viewing linked expense (could open a modal)
-// function viewExpense(expenseId) {
-//     // TODO: Implement logic to fetch and display expense details, maybe in a modal.
-//     console.log("Attempting to view expense:", expenseId);
-//     showToast("Not Implemented", `Viewing expense ${expenseId} is not yet implemented.`, "info");
-// }
 
 // --- Admin Table Action Handler ---
 function handleAdminTableActions(event) {
@@ -1580,6 +1636,7 @@ function handleAdminTableActions(event) {
             deleteExpenseType(id);
             break;
         default:
+            // This part handles user role changes now, moved to handleAdminUserActions below
             console.warn("Unknown admin table action:", action);
     }
 }
@@ -1664,6 +1721,103 @@ async function loadAccountTransactions(accountId, collectionName, tableBodyId) {
     }
 }
 
+// --- User Role Management (Admin) ---
+
+async function loadUsersTable() {
+    const tableBody = document.getElementById('users-table-body');
+    if (!tableBody || userRole !== 'admin') return;
+    tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Loading users...</td></tr>';
+
+    try {
+        // Fetch users from the 'roles' collection
+        const snapshot = await db.collection('roles').orderBy('email').get();
+
+        if (snapshot.empty) {
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No users found in roles collection.</td></tr>';
+            return;
+        }
+
+        let html = '';
+        snapshot.forEach(doc => {
+            const userData = doc.data();
+            const userId = doc.id;
+            const currentRole = userData.role || 'basic'; // Default display to basic if missing
+
+            // Don't allow admin to change their own role via this interface
+            const disableActions = userId === currentUser.uid;
+
+            html += `
+             <tr>
+                 <td>${escapeHTML(userData.email)}</td>
+                 <td><span class="badge ${currentRole === 'admin' ? 'bg-primary' : 'bg-secondary'} text-capitalize">${escapeHTML(currentRole)}</span></td>
+                 <td>
+                     <div class="btn-group btn-group-sm" role="group">
+                         <button class="btn btn-outline-secondary ${currentRole === 'basic' ? 'active' : ''}"
+                                 data-id="${userId}" data-action="set-role-basic" ${disableActions ? 'disabled' : ''}>
+                             Basic
+                         </button>
+                         <button class="btn btn-outline-primary ${currentRole === 'admin' ? 'active' : ''}"
+                                 data-id="${userId}" data-action="set-role-admin" ${disableActions ? 'disabled' : ''}>
+                             Admin
+                         </button>
+                     </div>
+                 </td>
+             </tr>`;
+        });
+        tableBody.innerHTML = html;
+
+    } catch (error) {
+        console.error("Error loading users table:", error);
+        tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading users.</td></tr>';
+        showToast("Error", "Could not load users.", "danger");
+    }
+}
+
+async function updateUserRole(userId, newRole) {
+    if (userRole !== 'admin' || !userId || !newRole || !['admin', 'basic'].includes(newRole)) {
+        showToast("Error", "Invalid role update request.", "danger");
+        return;
+    }
+    if (userId === currentUser.uid) {
+        showToast("Info", "Cannot change your own role via this interface.", "warning");
+        return;
+    }
+
+    console.log(`Attempting to set role for user ${userId} to ${newRole}`);
+    try {
+        await db.collection('roles').doc(userId).set({ role: newRole }, { merge: true }); // Use merge to only update the role field
+        showToast("Success", `User role updated to ${newRole}.`, "success");
+        loadUsersTable(); // Refresh the table
+    } catch (error) {
+        console.error(`Error updating role for user ${userId}:`, error);
+        showToast("Error", `Failed to update user role: ${error.message}`, "danger");
+        // Optionally re-enable buttons if needed, though refresh should handle it
+    }
+}
+
+// Event handler for user role buttons
+function handleAdminUserActions(event) {
+    const button = event.target.closest('button[data-id][data-action]');
+    if (!button || userRole !== 'admin') return;
+
+    const userId = button.dataset.id;
+    const action = button.dataset.action;
+
+    if (!userId || !action) return;
+
+    // Disable buttons in the group during update
+    button.closest('.btn-group')?.querySelectorAll('button').forEach(btn => btn.disabled = true);
+
+    if (action === 'set-role-basic') {
+        updateUserRole(userId, 'basic');
+    } else if (action === 'set-role-admin') {
+        updateUserRole(userId, 'admin');
+    } else {
+        console.warn("Unknown user action:", action);
+        // Re-enable buttons if action is unknown
+        button.closest('.btn-group')?.querySelectorAll('button').forEach(btn => btn.disabled = false);
+    }
+}
 
 // --- Initial Load Trigger ---
 // The onAuthStateChanged listener now handles the primary initialization flow.
