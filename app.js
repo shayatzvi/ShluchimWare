@@ -618,6 +618,20 @@ function attachAdminListeners() {
             btn.disabled = false;
         });
     }
+    // --- Requests Page Logic ---
+    else if (currentPage.includes('requests.html')) {
+         if (userRole !== 'basic') {
+            // Allow admins to view it too? For now, just log.
+            console.log("Non-basic user on requests page.");
+            // Optional: redirect if needed: window.location.href = 'dashboard.html';
+         }
+         // Initialize Bootstrap Modal for Requests page
+         const requestFundModalEl = document.getElementById('requestFundModal');
+         if (requestFundModalEl) requestFundModalInstance = new bootstrap.Modal(requestFundModalEl);
+
+        attachRequestListeners();
+        loadMyRequests(); // <--- This function loads the user's requests
+    }
 
     // Added: Listener for Approve Request Modal Form
     if (approveRequestForm) {
